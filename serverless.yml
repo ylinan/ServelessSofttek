@@ -1,0 +1,166 @@
+service: Serveless-Softtek-api
+
+frameworkVersion: "^4.0.0"
+
+provider:
+  name: aws
+  runtime: nodejs20.x
+  region: us-east-1
+  environment:
+    DYNAMODB_TABLE: fusionados_table
+    CLIENTES_TABLE: clientes_table
+    CACHE_TABLE: cache_table    
+    RATELIMIT_TABLE: ratelimit_table 
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - dynamodb:PutItem
+        - dynamodb:GetItem
+        - dynamodb:UpdateItem
+        - dynamodb:DeleteItem
+        - dynamodb:Query
+        - dynamodb:Scan
+      Resource:
+        - arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.DYNAMODB_TABLE}
+        - arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.DYNAMODB_TABLE}/index/*
+        - arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.CLIENTES_TABLE}
+        - arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.CLIENTES_TABLE}/index/*
+        - arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.CACHE_TABLE}
+        - arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.CACHE_TABLE}/index/*
+        - arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.RATELIMIT_TABLE}
+        - arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.RATELIMIT_TABLE}/index/*
+plugins:
+  - serverless-offline
+
+build:
+  esbuild: true
+  esbuildOptions:
+    bundle: true
+    minify: true
+    sourcemap: false
+    target: node20
+    platform: node
+    exclude:
+      - aws-sdk
+
+functions:
+  fusionados:
+    handler: src/handlers/fusionados.get
+    environment:
+      DYNAMODB_TABLE: fusionados_table
+    memorySize: 512
+    timeout: 28
+    events:
+      - httpApi:
+          path: /fusionados
+          method: get
+
+  almacenar:
+    handler: src/handlers/almacenar.post
+    environment:
+      CLIENTES_TABLE: clientes_table
+    memorySize: 512
+    timeout: 28
+    events:
+      - httpApi:
+          path: /almacenar
+          method: post
+
+  historial:
+    handler: src/handlers/historial.get
+    environment:
+      DYNAMODB_TABLE: fusionados_table
+    memorySize: 512
+    timeout: 28
+    events:
+      - httpApi:
+          path: /historial
+          method: get
+
+  checkRateLimit:
+    handler: src/handlers/rateLimitHandler.checkRateLimit
+    environment:
+      RATELIMIT_TABLE: ratelimit_table
+    memorySize: 256
+    timeout: 5
+    events:
+      - httpApi:
+          path: /check-rate-limit
+          method: post
+
+resources:
+  Resources:
+    FusionadosTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: fusionados_table
+        AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
+          - AttributeName: createdAt
+            AttributeType: S
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH
+        GlobalSecondaryIndexes:
+          - IndexName: CreatedAtIndex
+            KeySchema:
+              - AttributeName: createdAt
+                KeyType: HASH
+            Projection:
+              ProjectionType: ALL
+        BillingMode: PAY_PER_REQUEST
+    ClientesTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: clientes_table
+        AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
+          - AttributeName: correo
+            AttributeType: S
+          - AttributeName: createdAt
+            AttributeType: S
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH
+        GlobalSecondaryIndexes:
+          - IndexName: CorreoIndex
+            KeySchema:
+              - AttributeName: correo
+                KeyType: HASH
+            Projection:
+              ProjectionType: ALL
+          - IndexName: CreatedAtIndex
+            KeySchema:
+              - AttributeName: createdAt
+                KeyType: HASH
+            Projection:
+              ProjectionType: ALL
+        BillingMode: PAY_PER_REQUEST
+    CacheTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: cache_table
+        AttributeDefinitions:
+          - AttributeName: cacheKey
+            AttributeType: S
+        KeySchema:
+          - AttributeName: cacheKey
+            KeyType: HASH
+        BillingMode: PAY_PER_REQUEST
+    RateLimitTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ratelimit_table
+        AttributeDefinitions:
+          - AttributeName: rateKey
+            AttributeType: S
+          - AttributeName: timestamp
+            AttributeType: N
+        KeySchema:
+          - AttributeName: rateKey
+            KeyType: HASH
+          - AttributeName: timestamp
+            KeyType: RANGE
+        BillingMode: PAY_PER_REQUEST

@@ -1,0 +1,150 @@
+service: Serveless-Softtek-api
+
+frameworkVersion: "^4.0.0"
+
+provider:
+  name: aws
+  runtime: nodejs20.x
+  region: us-east-1
+  environment:
+    DYNAMODB_TABLE: fusionados_table
+    CLIENTES_TABLE: clientes_table
+    CACHE_TABLE: cache_table
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - dynamodb:PutItem
+        - dynamodb:GetItem
+        - dynamodb:UpdateItem
+        - dynamodb:DeleteItem
+        - dynamodb:Query
+        - dynamodb:Scan
+      Resource:
+        - arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.DYNAMODB_TABLE}
+        - arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.DYNAMODB_TABLE}/index/*
+        - arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.CLIENTES_TABLE}
+        - arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.CLIENTES_TABLE}/index/*
+        - arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.CACHE_TABLE}
+        - arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.CACHE_TABLE}/index/*
+  httpApi:
+    authorizers:
+      cognitoAuthorizer:
+        type: jwt
+        identitySource: "$request.header.Authorization"
+        issuerUrl: https://cognito-idp.us-east-1.amazonaws.com/us-east-1_abc123456
+        audience:
+          - 1jp09c2f6u233444
+
+plugins:
+  - serverless-offline
+
+build:
+  esbuild: true
+  esbuildOptions:
+    bundle: true
+    minify: true
+    sourcemap: false
+    target: node20
+    platform: node
+    exclude:
+      - aws-sdk
+
+functions:
+  fusionados:
+    handler: src/handlers/fusionados.get
+    environment:
+      DYNAMODB_TABLE: fusionados_table
+    memorySize: 512
+    timeout: 28
+    events:
+      - httpApi:
+          path: /fusionados
+          method: get
+
+  almacenar:
+    handler: src/handlers/almacenar.post
+    environment:
+      CLIENTES_TABLE: clientes_table
+    memorySize: 512
+    timeout: 28
+    events:
+      - httpApi:
+          path: /almacenar
+          method: post
+          authorizer:
+            name: cognitoAuthorizer
+
+  historial:
+    handler: src/handlers/historial.get
+    environment:
+      DYNAMODB_TABLE: fusionados_table
+    memorySize: 512
+    timeout: 28
+    events:
+      - httpApi:
+          path: /historial
+          method: get
+          authorizer:
+            name: cognitoAuthorizer
+
+resources:
+  Resources:
+    FusionadosTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: fusionados_table
+        AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
+          - AttributeName: createdAt
+            AttributeType: S
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH
+        GlobalSecondaryIndexes:
+          - IndexName: CreatedAtIndex
+            KeySchema:
+              - AttributeName: createdAt
+                KeyType: HASH
+            Projection:
+              ProjectionType: ALL
+        BillingMode: PAY_PER_REQUEST
+    ClientesTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: clientes_table
+        AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
+          - AttributeName: correo
+            AttributeType: S
+          - AttributeName: createdAt
+            AttributeType: S
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH
+        GlobalSecondaryIndexes:
+          - IndexName: CorreoIndex
+            KeySchema:
+              - AttributeName: correo
+                KeyType: HASH
+            Projection:
+              ProjectionType: ALL
+          - IndexName: CreatedAtIndex
+            KeySchema:
+              - AttributeName: createdAt
+                KeyType: HASH
+            Projection:
+              ProjectionType: ALL
+        BillingMode: PAY_PER_REQUEST
+    CacheTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: cache_table
+        AttributeDefinitions:
+          - AttributeName: cacheKey
+            AttributeType: S
+        KeySchema:
+          - AttributeName: cacheKey
+            KeyType: HASH
+        BillingMode: PAY_PER_REQUEST
